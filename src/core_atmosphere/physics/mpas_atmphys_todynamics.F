@@ -154,7 +154,10 @@
 !local pointers for masked nudging:
  real(kind=RKIND), dimension(:), pointer :: nudgeMaskCell, nudgeMaskEdge
  character(len=StrKIND), pointer :: config_nudge_mask
- real(kind=RKIND), dimension(:,:), pointer :: zgrid 
+ real(kind=RKIND), dimension(:,:), pointer :: zgrid
+!local pointers for heating mod:
+ character(len=StrKIND), pointer :: config_mod_cu_heating
+ real(kind=RKIND), pointer :: config_const_nudge_fac, config_z0,config_z1, config_nudge_bottom                                   
 
 !=================================================================================================================
 
@@ -218,7 +221,13 @@
  call mpas_pool_get_array(mask_input, 'nudgeMaskCell',   nudgeMaskCell)
  call mpas_pool_get_array(mask_input, 'nudgeMaskEdge',   nudgeMaskEdge)
  call mpas_pool_get_array(mesh, 'zgrid',   zgrid)
-
+! for heating mod
+ call mpas_pool_get_config(block % configs, 'config_mod_cu_heating', config_mod_cu_heating)
+ call mpas_pool_get_config(block % configs, 'config_const_nudge_fac',config_const_nudge_fac)
+ call mpas_pool_get_config(block % configs, 'config_z0', config_z0)
+ call mpas_pool_get_config(block % configs, 'config_z1', config_z1)
+ call mpas_pool_get_config(block % configs, 'config_nudge_bottom', config_nudge_bottom)
+ 
 
 !initialize the tendency for the potential temperature and all scalars due to PBL, convection,
 !and longwave and shortwave radiation:
@@ -269,9 +278,9 @@
               rucuten,rvcuten,rthcuten,rqvcuten,rqccuten,rqrcuten,rqicuten,rqscuten,     &
               rthratenlw,rthratensw,rublten_Edge,rucuten_Edge,                           &
               config_nudge_mask, nudgeMaskCell, nudgeMaskEdge, zgrid,                    &
-              tend_th,tend_rtheta_physics,tend_scalars,tend_ru_physics,tend_u_phys,      &
-              exchange_halo_group)
-
+              config_mod_cu_heating,config_const_nudge_fac,config_z0,config_z1,          &
+              config_nudge_bottom, tend_th,tend_rtheta_physics,tend_scalars,             &
+              tend_ru_physics,tend_u_phys,exchange_halo_group)
 
 !clean up any pointers that were allocated with zero size before the call to physics_get_tend_work:
  if(size(rucuten) == 0 ) deallocate(rucuten )
@@ -333,7 +342,8 @@
                     rucuten,rvcuten,rthcuten,rqvcuten,rqccuten,rqrcuten,rqicuten,rqscuten,     &
                     rthratenlw,rthratensw,rublten_Edge,rucuten_Edge,                           &
                     config_nudge_mask, nudgeMaskCell, nudgeMaskEdge, zgrid,                    &
-                    tend_th,tend_theta,tend_scalars,tend_u,tend_u_phys,                        &
+                    config_mod_cu_heating,config_const_nudge_fac,config_z0,config_z1,          &
+                    config_nudge_bottom,tend_th,tend_theta,tend_scalars,tend_u,tend_u_phys,    &
                     exchange_halo_group)
 !=================================================================================================================
 
@@ -398,10 +408,12 @@
  character(len=StrKIND), intent(in) :: config_nudge_mask
  real (kind=RKIND), dimension(nCells+1), intent(in) :: nudgeMaskCell
  real (kind=RKIND), dimension(nEdges+1), intent(in) :: nudgeMaskEdge
- real (kind=RKIND) :: const_nudge_fac
+ real (kind=RKIND) :: config_const_nudge_fac, config_nudge_bottom
  real (kind=RKIND), dimension(nVertLevels+1,nCells+1), intent(in) :: zgrid 
  real (kind=RKIND), dimension(nVertLevels,nCells+1) :: nudge_vert_adj
- real (kind=RKIND) :: z0, z1, kz0, kz1, zm
+ real (kind=RKIND) :: config_z0, config_z1, kz0, kz1, zm
+! Latent Heating Mod:
+ character(len=StrKIND), intent(in) :: config_mod_cu_heating
 ! end MW
 
 !local variables:
@@ -478,50 +490,29 @@
 
     !***
     ! MW: Adding nudging of the net latent heating from the cumulus scheme
-    if (trim(config_nudge_mask) /= 'off') then
-
-      if ( .true. ) then  ! smoothly varying by height
-
-          z0 = 1500.  ! bottom of transition layer
-          z1 = 2500.  ! top of transition layer
+    if (trim(config_nudge_mask) /= 'off' .and. trim(config_mod_cu_heating) /= 'off') then
           do i = 1, nCellsSolve
           do k = 1, nVertLevels
+              ! smoothly varying damping/amplification by height
               zm = 0.5*( zgrid(k,i) + zgrid(k+1,i) )
-              if ( zm <= z1 .and. zm > z0 ) then
-                  nudge_vert_adj(k,i) = cos( pii*0.5_RKIND*(zm-z1)/(z0-z1))**2
-              elseif ( zm > z1 ) then
+              if ( zm <= config_z1 .and. zm > config_z0 ) then
+                  nudge_vert_adj(k,i) = cos(pii*0.5_RKIND*(zm-config_z1)/(config_z0-config_z1))**2
+              elseif ( zm > config_z1 ) then
                   nudge_vert_adj(k,i) = 1._RKIND
-              elseif ( zm <= z0 ) then
+              elseif ( zm <= config_z0 ) then
                   nudge_vert_adj(k,i) = 0._RKIND
               endif
+              ! cosine weighting config
+              nudge_vert_adj(k,i) = (1.0_RKIND - 2.0_RKIND*config_nudge_bottom) * nudge_vert_adj(k,i) + config_nudge_bottom
           enddo
           enddo
 
-      else  ! smoothly varying by model level
-
-          kz0 = 15   ! bottom of transition layer
-          kz1 = 20   ! top of transition layer
-          do i = 1, nCellsSolve
-          do k = 1, nVertLevels
-              if ( k <= kz1 .and. k > kz0 ) then
-                  nudge_vert_adj(k,i) = cos( pii*0.5_RKIND*(k-kz1)/(kz0-kz1))**2
-              elseif ( k > kz1 ) then
-                  nudge_vert_adj(k,i) = 1.0_RKIND 
-              elseif ( k <= kz0 ) then
-                  nudge_vert_adj(k,i) = 0._RKIND 
-              endif
-          enddo
-          enddo
-
-      endif
-
-
-      const_nudge_fac = -0.5_RKIND  ! neg: damping; pos: enhancing 
+      !config_const_nudge_fac -> neg: damping; pos: enhancing 
       do i = 1, nCellsSolve
       do k = 1, nVertLevels 
          ! nudgeMaskCell is defined as 1.0_RKIND where LH damping occurs, and 0._RKIND everywhere else
          ! to reduce strength (e.g., by 50%) of latent heating -- multiply RHS 2nd term by 0.5_RKIND
-         tend_th(k,i) = tend_th(k,i) + const_nudge_fac*rthcuten(k,i)*mass(k,i)*nudgeMaskCell(i)*nudge_vert_adj(k,i)
+         tend_th(k,i) = tend_th(k,i) + config_const_nudge_fac*rthcuten(k,i)*mass(k,i)*nudgeMaskCell(i)*nudge_vert_adj(k,i)
       end do
       end do
 

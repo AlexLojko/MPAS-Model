@@ -462,7 +462,37 @@
                 <nml_option name="config_nudge_mask" type="character" default_value="off"
                      units="-"
                      description="Applying nudging over an input masked region only"
-                     possible_values="`off' or `on'; `off' turns off the mask; `on' reads in an input file with the masked region"/>
+		     possible_values="`off' or `on'; `off' turns off the mask; `on' reads in an input file with the masked region"/>
+
+	        <nml_option name="config_mod_mp_heating" type="character" default_value="off"
+                     units="-"
+                     description="Allow modifications to microphysics (mp) heating over an input masked region only"
+		     possible_values="`off' or `on'; `off' makes no changes (default); `on'activates changes to mp heating within the masked region"/>
+
+		<nml_option name="config_mod_cu_heating" type="character" default_value="off"
+                     units="-"
+                     description="Allow modifications to cumulus (cu) heating over an input masked region only"
+		     possible_values="`off' or `on'; `off' makes no changes (default); `on' activates changes to cu heating within the masked region"/>
+
+		<nml_option name="config_const_nudge_fac" type="real" default_value="0"
+                     units="-"
+		     description="Set the amount to scale the cloud heating damping/amplification by"
+		     possible_values="-1 $\leq$ config_const_nudge_fac $\leq$ 1; cloud heating is scaled by (1 + config_nudge_factor), so -1 fully suppresses it, 1 doubles it, and 0 (the default) leaves it unmodified"/>
+
+		<nml_option name="config_z0" type="real" default_value="1500"
+                     units="-"
+		     description="Set the minimum height (meters) above sea level to apply cosine weighting function for cloud heating modification"
+		     possible_values="Non-negative real values, minimum is 0 (surface), max value is ztop"/>
+
+                <nml_option name="config_z1" type="real" default_value="2500"
+                     units="-"
+		     description="Set the maximum height (meters) above sea level to apply cosine weighting function for cloud heating modification"
+		     possible_values="Non-negative real values, minimum is 0 (surface), max value is ztop"/>
+
+		<nml_option name="config_nudge_bottom" type="real" default_value="0"
+                     units="-"
+                     description="Reverse the direction of the cosine weighting function for cloud heating"
+                     possible_values="'0' or '1'; '0' keeps the default, heating changes are made above z0 (maximized above z1); '1' implies heating changes are made below z1 (maximized below z0)"/>
 	</nml_record>
 
 <!-- **************************************************************************************** -->

@@ -866,10 +866,14 @@ end subroutine pre_microphysics
 ! MW: local pointers for masked nudging
   real(kind=RKIND), dimension(:), pointer :: nudgeMaskCell, nudgeMaskEdge
   character(len=StrKIND), pointer :: config_nudge_mask
-  real (kind=RKIND) :: const_nudge_fac, nudge_fac
+  real (kind=RKIND) :: nudge_fac
   real (kind=RKIND) :: nudge_vert_adj
-  real (kind=RKIND) :: z0, z1, kz0, kz1, zm
+  real (kind=RKIND) :: kz0, kz1, zm
   integer, pointer :: nCells, nEdges
+
+!local pointers for heating mod:
+  character(len=StrKIND), pointer :: config_mod_mp_heating
+  real(kind=RKIND), pointer :: config_const_nudge_fac, config_z0, config_z1, config_nudge_bottom
 
 !local variables:
  integer:: icount
@@ -908,12 +912,18 @@ end subroutine pre_microphysics
  qr   => scalars(index_qr,:,:)
 
  call mpas_pool_get_array(tend,'rt_diabatic_tend',rt_diabatic_tend)
-
+! for masking
  call mpas_pool_get_config(configs, 'config_nudge_mask', config_nudge_mask)
  call mpas_pool_get_array(mask_input, 'nudgeMaskCell',   nudgeMaskCell)
  call mpas_pool_get_array(mask_input, 'nudgeMaskEdge',   nudgeMaskEdge)
  call mpas_pool_get_dimension(mesh, 'nCells',   nCells)
  call mpas_pool_get_dimension(mesh, 'nEdges',   nEdges)
+! for heating mod
+ call mpas_pool_get_config(configs, 'config_mod_mp_heating', config_mod_mp_heating)
+ call mpas_pool_get_config(configs, 'config_const_nudge_fac', config_const_nudge_fac)
+ call mpas_pool_get_config(configs, 'config_z0', config_z0)
+ call mpas_pool_get_config(configs, 'config_z1', config_z1)
+ call mpas_pool_get_config(configs, 'config_nudge_bottom', config_nudge_bottom)
 
  if (.not. associated(nudgeMaskCell)) allocate(nudgeMaskCell(nCells))
  if (.not. associated(nudgeMaskEdge)) allocate(nudgeMaskEdge(nEdges))
@@ -938,39 +948,25 @@ end subroutine pre_microphysics
     rt_diabatic_tend(k,i) = (theta_m(k,i) - rt_diabatic_tend(k,i))/dt_dyn
     dtheta_dt_mp(k,i)     = (theta_m(k,i)/(1._RKIND+rvord*qv(k,i))-dtheta_dt_mp(k,i))/(dt_dyn)
 
-    if (trim(config_nudge_mask) /= 'off') then
+    if (trim(config_nudge_mask) /= 'off'.and. trim(config_mod_mp_heating) /= 'off') then
 
-       if (.true.) then
-          ! smoothly varying by height
-          z0 = 1500.0_RKIND   ! bottom of transition layer
-          z1 = 2500.0_RKIND   ! top of transition layer
+          ! smoothly varying damping/amplification by height
           zm = 0.5_RKIND * ( zgrid(k,i) + zgrid(k+1,i) )
-          if ( zm <= z1 .and. zm > z0 ) then
-             nudge_vert_adj = cos( pii*0.5_RKIND*(zm-z1)/(z0-z1) )**2
-          elseif ( zm > z1 ) then
+          if ( zm <= config_z1 .and. zm > config_z0 ) then
+             nudge_vert_adj = cos(pii*0.5_RKIND*(zm-config_z1)/(config_z0-config_z1) )**2
+          elseif ( zm > config_z1 ) then
              nudge_vert_adj = 1.0_RKIND
           else
              nudge_vert_adj = 0.0_RKIND
           endif
-       else
-          ! smoothly varying by model level
-          kz0 = 15
-          kz1 = 20
-          if ( k <= kz1 .and. k > kz0 ) then
-             nudge_vert_adj = cos( pii*0.5_RKIND*(k-kz1)/(kz0-kz1))**2
-          elseif ( k > kz1 ) then
-             nudge_vert_adj = 1.0_RKIND
-          else
-             nudge_vert_adj = 0.0_RKIND
-          endif
-       endif
+          ! cosine weighting config
+          nudge_vert_adj = (1.0_RKIND - 2.0_RKIND*config_nudge_bottom)*nudge_vert_adj + config_nudge_bottom 
+          !config_const_nudge_fac -> neg: damping; pos: enhancing
+          nudge_fac = 1.0_RKIND+config_const_nudge_fac*nudgeMaskCell(i)*nudge_vert_adj
 
-       const_nudge_fac = -0.5_RKIND
-       nudge_fac = 1.0_RKIND+const_nudge_fac*nudgeMaskCell(i)*nudge_vert_adj
-
-       ! update theta_m due to nudged rt_diabatic_tend
-       theta_m(k,i) = theta_m(k,i) + (nudge_fac-1.0_RKIND)*rt_diabatic_tend(k,i)*dt_dyn
-       rt_diabatic_tend(k,i) = rt_diabatic_tend(k,i) * nudge_fac
+          ! update theta_m due to nudged rt_diabatic_tend
+          theta_m(k,i) = theta_m(k,i) + (nudge_fac-1.0_RKIND)*rt_diabatic_tend(k,i)*dt_dyn
+          rt_diabatic_tend(k,i) = rt_diabatic_tend(k,i) * nudge_fac
     end if  ! config_nudge_mask
 
 
