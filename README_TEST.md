@@ -3,9 +3,7 @@
 **Author:** May Wong & Alexander Lojko
 **Last updated:** September 2026
 
-The MPAS Latent Heating Modification Tool involves a set of configurations for the Model for Prediction Across Scales (MPAS) that enables controlled modification of cloud-related latent heating in simulations.
-
-The tool allows users to amplify or suppress latent heating associated with parameterized cumulus convection and microphysics schemes through a set of configurable parameters. These modifications enable sensitivity experiments to investigate science questions related to cloud heating. 
+The version of the Model for Prediction Across Scales (MPAS) allows users to amplify or suppress latent heating associated with parameterized cumulus convection and microphysics schemes through a set of configurable parameters. These modifications enable sensitivity experiments to investigate science questions related to cloud heating. 
 
 The tool is designed to be used alongside the [`MPAS-Limited-Area-Masks`](https://github.com/maywswong/MPAS-Limited-Area-Masks) tool, which allows users to prescribe the geographic region over which cloud heating modifications are applied.
 
@@ -40,7 +38,7 @@ The modifications are controlled through `namelist.atmosphere`, allowing users t
 
 ### 1. Compile the modified MPAS model
 
-Compile this version of the MPAS model containing source code modifications to modify cloud heating. Once compiled, the necessary files will be created to enable configuration of the cloud heating experiments. 
+Compile this version of MPAS which contains source code additions to modify cloud heating. Once compiled, the necessary files will be created to enable configuration of the cloud heating experiments. 
 
 ### 2. Create a geographic mask
 
@@ -70,7 +68,7 @@ The mask is read during model initialization and is used to determine the geogra
 
 **Note:** Make sure the mask is placed (or linked) within your compiled MPAS work-space. 
 
-## Configuration
+## Cloud Heating Configuration
 
 The latent heating modification tool is configured through the `&nudging` namelist in `namelist.atmosphere`.
 
@@ -92,7 +90,7 @@ The default configuration is:
 /
 ```
 
-By default, all latent heating modifications are disabled. The functionality requires nudging to be enabled and a valid geographic mask to be available.
+By default, the tool is disabled. The functionality requires nudging to be enabled and a valid geographic mask to be available.
 
 ### Configuration parameters
 
@@ -150,8 +148,6 @@ The parameter determines the fractional change in latent heating, subject to the
 Positive values enhance heating, while negative values suppress heating.
 
 The modification has been tested primarily for values between `-1` and `1`. Values outside this range have not been systematically tested and should be used with caution.
-
-The actual heating modification at a given grid point depends on the specified geographic mask and vertical weighting function.
 
 ### `config_z0` and `config_z1`
 
@@ -233,7 +229,7 @@ The following examples illustrate how the namelist parameters can be combined to
 
 ### Example 1: Suppress microphysics heating throughout the column
 
-The following configuration suppresses Thompson microphysics heating by 50% throughout the geographic mask.
+The following configuration suppresses Thompson microphysics heating by 50% throughout the entire atmospheric column.
 
 ```fortran
 &nudging
@@ -271,7 +267,7 @@ Although the tool has undergone testing, some configurations and parameter value
 
 ### Modifying Cumulus or Microphysics heating?
 
-By default, if the user wants to modify cloud heating, we recommend enabling modification to both the microphysics and the cumulus scheme. 
+By default, if the user wants to modify cloud heating, we recommend enabling modification to both the microphysics and the cumulus scheme. For users that are familiar with the Weather Forecasting Research (WRF) model, suppressing microphysics heating by -1 would be analogous to enabling the 'no_mp_heating' flag.  
 
 ### Microphysics scheme compatibility
 
